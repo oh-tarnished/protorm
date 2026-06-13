@@ -67,6 +67,10 @@ changelog:
       - '^chore:'
       - typo
 
+# Homebrew cask, generated and committed to the tap on each release. The url +
+# sha256 for every platform are filled in automatically from the archives below,
+# so there is no checksum to hand-maintain (this is what makes the removed,
+# hand-written Formula/protoc-gen-protorm.rb redundant).
 homebrew_casks:
   - name: protoc-gen-protorm
     repository:
