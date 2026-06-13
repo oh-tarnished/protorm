@@ -18,8 +18,10 @@ import (
 )
 
 // buildDatabases converts every generate-flagged file in the plugin request
-// into the database IR, merging files that share a datasource name.
-func buildDatabases(p *protogen.Plugin) ([]*schema.Database, error) {
+// into the database IR, merging files that share a datasource name. Recoverable
+// schema problems (unresolved FKs, unknown index columns) are recorded on diags
+// rather than failing here; the caller decides their severity via --strict.
+func buildDatabases(p *protogen.Plugin, diags *diagnostics) ([]*schema.Database, error) {
 	byName := map[string]*schema.Database{}
 	var order []*schema.Database
 
@@ -37,9 +39,36 @@ func buildDatabases(p *protogen.Plugin) ([]*schema.Database, error) {
 	}
 
 	for _, db := range order {
-		resolveRelations(db)
+		resolveRelations(db, diags)
+		validateIndexes(db, diags)
 	}
 	return order, nil
+}
+
+// validateIndexes reports any index that names a column absent from its table,
+// so a typo in protorm.v1.table.indexes is caught at generation time instead of
+// surfacing as invalid DDL when the schema is applied.
+func validateIndexes(db *schema.Database, diags *diagnostics) {
+	for _, s := range db.Schemas {
+		for _, t := range s.Tables {
+			cols := make(map[string]bool, len(t.Columns))
+			for _, c := range t.Columns {
+				cols[c.Name] = true
+			}
+			for _, idx := range t.Indexes {
+				label := idx.Name
+				if label == "" {
+					label = "(" + strings.Join(idx.Columns, ",") + ")"
+				}
+				for _, c := range idx.Columns {
+					if !cols[c] {
+						diags.warnf("table %q index %s names unknown column %q",
+							t.Name, label, c)
+					}
+				}
+			}
+		}
+	}
 }
 
 func contains(dbs []*schema.Database, db *schema.Database) bool {
@@ -91,7 +120,8 @@ func mergeFile(byName map[string]*schema.Database, f *protogen.File) (*schema.Da
 // schemaOverride, when non-empty, replaces the resource-type-derived schema
 // for all tables in this file. Reports whether anything was added.
 func addFileTables(db *schema.Database, f *protogen.File, schemaOverride string) bool {
-	src := sourceFileBase(f.Desc.Path())
+	srcPath := f.Desc.Path()
+	src := sourceFileBase(srcPath)
 	added := false
 
 	for _, msg := range f.Messages {
@@ -116,7 +146,7 @@ func addFileTables(db *schema.Database, f *protogen.File, schemaOverride string)
 			sName = schemaOverride
 		}
 		s := schemaByName(db, sName)
-		s.Tables = append(s.Tables, buildTable(s, msg, tName, src))
+		s.Tables = append(s.Tables, buildTable(s, msg, tName, src, srcPath))
 		added = true
 	}
 	return added
@@ -135,13 +165,14 @@ func schemaByName(db *schema.Database, name string) *schema.Schema {
 }
 
 // buildTable maps one resource-annotated message to a *schema.Table.
-func buildTable(s *schema.Schema, msg *protogen.Message, name, src string) *schema.Table {
+func buildTable(s *schema.Schema, msg *protogen.Message, name, src, srcPath string) *schema.Table {
 	t := &schema.Table{
 		Name:         name,
 		Comment:      cleanComment(msg.Comments.Leading),
 		ModelName:    string(msg.Desc.Name()),
 		ProtoMessage: string(msg.Desc.FullName()),
 		SourceFile:   src,
+		SourceProto:  srcPath,
 	}
 
 	for _, f := range msg.Fields {

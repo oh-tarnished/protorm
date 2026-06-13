@@ -53,14 +53,20 @@ func main() {
 		"target", "",
 		"output backend: prisma | gorm | sql | csv",
 	)
+	strict := flags.Bool(
+		"strict", false,
+		"treat schema warnings (unresolved resource_references, unknown index columns) as errors",
+	)
 
 	protogen.Options{
 		ParamFunc: flags.Set,
 	}.Run(func(p *protogen.Plugin) error {
 		return generator.Generate(p, generator.Options{
-			// *target is dereferenced inside the closure so that ParamFunc has
-			// already populated it before we read the value.
-			Target: *target,
+			// *target/*strict are dereferenced inside the closure so that
+			// ParamFunc has already populated them before we read the values.
+			Target:  *target,
+			Strict:  *strict,
+			Version: version,
 		})
 	})
 }

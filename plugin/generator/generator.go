@@ -31,6 +31,14 @@ type Options struct {
 	// Target selects the output backend.
 	// Accepted values: "prisma", "gorm", "sql", "csv".
 	Target string
+
+	// Strict promotes recoverable schema warnings (unresolved resource_references,
+	// index columns that don't exist) into hard errors that fail generation.
+	Strict bool
+
+	// Version is the protoc-gen-protorm build version, written into the
+	// generated-file banner. Empty renders as "(unknown)".
+	Version string
 }
 
 // registry maps target names to their backend implementations.
@@ -64,10 +72,35 @@ func Generate(p *protogen.Plugin, opts Options) error {
 		)
 	}
 
-	dbs, err := buildDatabases(p)
+	diags := &diagnostics{}
+	dbs, err := buildDatabases(p, diags)
 	if err != nil {
 		return fmt.Errorf("protorm: schema inference failed: %w", err)
 	}
+	if err := diags.resolve(opts.Strict); err != nil {
+		return err
+	}
+
+	protoc := protocVersion(p)
+	for _, db := range dbs {
+		db.PluginVersion = opts.Version
+		db.ProtocVersion = protoc
+	}
 
 	return target.Generate(p, dbs)
+}
+
+// protocVersion formats the compiler version from the CodeGeneratorRequest the
+// way protoc-gen-go does: "v<major>.<minor>.<patch>[-suffix]", or "(unknown)"
+// when the invoker (e.g. the in-process test harness) supplies none.
+func protocVersion(p *protogen.Plugin) string {
+	v := p.Request.GetCompilerVersion()
+	if v == nil {
+		return ""
+	}
+	suffix := ""
+	if s := v.GetSuffix(); s != "" {
+		suffix = "-" + s
+	}
+	return fmt.Sprintf("v%d.%d.%d%s", v.GetMajor(), v.GetMinor(), v.GetPatch(), suffix)
 }

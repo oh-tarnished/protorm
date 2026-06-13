@@ -15,6 +15,7 @@ import (
 
 	"google.golang.org/protobuf/compiler/protogen"
 
+	"github.com/oh-tarnished/protorm/plugin/generator/header"
 	"github.com/oh-tarnished/protorm/plugin/generator/naming"
 	"github.com/oh-tarnished/protorm/plugin/generator/schema"
 	"github.com/oh-tarnished/protorm/plugin/generator/templates"
@@ -76,8 +77,14 @@ func schemaFileView(db *schema.Database, provider types.Provider) map[string]any
 		suffix = "mongo"
 	}
 	return map[string]any{
-		"Database":    db.Name,
-		"SchemaCSV":   strings.Join(names, ", "),
+		"Header": header.Render("//", header.Info{
+			PluginVersion: db.PluginVersion,
+			ProtocVersion: db.ProtocVersion,
+			Database:      db.Name,
+			SchemaLabel:   "schemas",
+			Schema:        strings.Join(names, ", "),
+			Notes:         []string{"Connection URLs live in " + db.Name + ".config.ts (Prisma 7 convention)."},
+		}),
 		"Datasource":  naming.DatasourceName(db.Name, suffix),
 		"Provider":    provider.PrismaProvider(),
 		"SchemaList":  strings.Join(quoted, ", "),
@@ -88,10 +95,21 @@ func schemaFileView(db *schema.Database, provider types.Provider) map[string]any
 // configView prepares the <db>.config.ts template data: the env var carrying
 // the connection URL ("bookstore_db" → "BOOKSTORE_DB_DATABASE_URL").
 func configView(db *schema.Database) map[string]any {
+	names := make([]string, 0, len(db.Schemas))
+	for _, s := range db.Schemas {
+		names = append(names, s.Name)
+	}
 	return map[string]any{
-		"Database": db.Name,
-		"URL":      db.URL,
-		"EnvVar":   envVar(db),
+		"Header": header.Render("//", header.Info{
+			PluginVersion: db.PluginVersion,
+			ProtocVersion: db.ProtocVersion,
+			Database:      db.Name,
+			SchemaLabel:   "schemas",
+			Schema:        strings.Join(names, ", "),
+			Notes:         []string{"Prisma 7 configuration; connection URLs are environment-driven."},
+		}),
+		"URL":    db.URL,
+		"EnvVar": envVar(db),
 	}
 }
 

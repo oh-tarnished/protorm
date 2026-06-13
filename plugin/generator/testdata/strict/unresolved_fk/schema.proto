@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+// Package strictfk.v1 references a model that does not exist, so resolveRelations
+// records an unresolved-FK warning (an error under --strict).
+package strictfk.v1;
+
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "protorm/v1/annotations.proto";
+
+option (protorm.v1.datasource) = {
+  database: "strictfk_db"
+  provider: "postgres"
+  schema: "public"
+};
+
+message Widget {
+  option (google.api.resource) = {
+    type: "strictfk.v1/Widget"
+    pattern: "widgets/{widget}"
+    singular: "widget"
+    plural: "widgets"
+  };
+
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // ghost_id references a model that is never defined → unresolved FK.
+  string ghost_id = 2 [(google.api.resource_reference) = {type: "strictfk.v1/Ghost"}];
+}

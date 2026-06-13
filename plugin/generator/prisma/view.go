@@ -6,6 +6,7 @@ package prisma
 import (
 	"strings"
 
+	"github.com/oh-tarnished/protorm/plugin/generator/header"
 	"github.com/oh-tarnished/protorm/plugin/generator/naming"
 	"github.com/oh-tarnished/protorm/plugin/generator/schema"
 	"github.com/oh-tarnished/protorm/plugin/generator/types"
@@ -29,14 +30,23 @@ func fragmentView(db *schema.Database, s *schema.Schema, domain string, provider
 		}
 	}
 	var models []modelView
+	srcProto := domain + ".proto"
 	for _, t := range s.Tables {
 		if t.SourceFile == domain {
 			models = append(models, modelViewOf(t, provider))
+			if t.SourceProto != "" {
+				srcProto = t.SourceProto
+			}
 		}
 	}
 	return map[string]any{
-		"ProtoFile":   domain + ".proto",
-		"Database":    db.Name,
+		"Header": header.Render("//", header.Info{
+			PluginVersion: db.PluginVersion,
+			ProtocVersion: db.ProtocVersion,
+			Source:        srcProto,
+			Database:      db.Name,
+			Schema:        s.Name,
+		}),
 		"Schema":      s.Name,
 		"MultiSchema": provider == types.Postgres,
 		"Enums":       enums,
@@ -108,12 +118,16 @@ func fieldDecl(col *schema.Column, provider types.Provider) string {
 	var b strings.Builder
 	b.WriteString(naming.Camel(col.Name))
 	b.WriteByte(' ')
+	typeName := col.SQLType
 	if col.Enum != nil {
-		b.WriteString(col.Enum.Name)
+		typeName = col.Enum.Name
 	} else {
-		b.WriteString(types.PrismaTypeFor(provider, col.SQLType))
+		typeName = types.PrismaTypeFor(provider, col.SQLType)
 	}
-	if col.Optional {
+	b.WriteString(typeName)
+	// A Prisma list is implicitly empty-not-null: an optional list (`Type[]?`)
+	// is a schema error, so only scalar columns take the optional marker.
+	if col.Optional && !strings.HasSuffix(typeName, "[]") {
 		b.WriteByte('?')
 	}
 	if col.PrimaryKey {

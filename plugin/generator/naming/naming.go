@@ -62,12 +62,22 @@ func CamelFirst(s string) string {
 	return strings.ToLower(s[:1]) + s[1:]
 }
 
-// SnakeCase converts PascalCase to snake_case. "BookAuthor" → "book_author".
+// SnakeCase converts PascalCase to snake_case, keeping acronym runs intact:
+// "BookAuthor" → "book_author", "AuthorID" → "author_id", "HTTPServer" →
+// "http_server", "ISBN" → "isbn". A word boundary precedes an uppercase rune
+// only when the previous rune is not uppercase (lower→Upper, e.g. "kA"), or
+// when an uppercase run ends because the next rune is lowercase (the trailing
+// capital starts a new word, e.g. the "S" in "HTTPServer").
 func SnakeCase(s string) string {
 	var b strings.Builder
-	for i, r := range s {
+	runes := []rune(s)
+	for i, r := range runes {
 		if i > 0 && r >= 'A' && r <= 'Z' {
-			b.WriteByte('_')
+			prevUpper := runes[i-1] >= 'A' && runes[i-1] <= 'Z'
+			nextLower := i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z'
+			if !prevUpper || nextLower {
+				b.WriteByte('_')
+			}
 		}
 		b.WriteRune(r)
 	}

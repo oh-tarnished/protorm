@@ -7,8 +7,30 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/oh-tarnished/protorm/plugin/generator/header"
 	"github.com/oh-tarnished/protorm/plugin/generator/schema"
 )
+
+// quoteIdent wraps a SQL identifier in double quotes (doubling any embedded
+// quote) so table/column/type names that collide with reserved words — order,
+// user, window — emit valid DDL instead of silently breaking.
+func quoteIdent(s string) string {
+	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+}
+
+// quoteLiteral wraps a SQL string literal in single quotes, doubling any
+// embedded single quote so apostrophes in enum values can't terminate the
+// literal. (Column default_value is intentionally not passed through here: it
+// is documented as a raw SQL expression, e.g. now(), not a string literal.)
+func quoteLiteral(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+// qualified joins a schema and object name into a quoted, schema-qualified
+// reference: ("kitchen", "sinks") → "kitchen"."sinks".
+func qualified(schema, name string) string {
+	return quoteIdent(schema) + "." + quoteIdent(name)
+}
 
 type itemView struct {
 	Comment, Def string
@@ -16,13 +38,13 @@ type itemView struct {
 }
 
 type enumDDLView struct {
-	Comment, SQLName, ValueList string
+	Comment, TypeRef, ValueList string
 }
 
 type tableView struct {
-	Comment, Name string
-	Items         []itemView
-	Indexes       []string
+	Comment, Ref string
+	Items        []itemView
+	Indexes      []string
 }
 
 // schemaView assembles the template data for one schema's DDL file.
@@ -31,7 +53,7 @@ func schemaView(db *schema.Database, s *schema.Schema) map[string]any {
 	for _, e := range s.Enums {
 		vals := make([]string, len(e.Values))
 		for i, v := range e.Values {
-			vals[i] = "'" + v.MapName + "'"
+			vals[i] = quoteLiteral(v.MapName)
 		}
 		comment := e.Comment
 		if comment == "" {
@@ -39,7 +61,7 @@ func schemaView(db *schema.Database, s *schema.Schema) map[string]any {
 		}
 		enums = append(enums, enumDDLView{
 			Comment:   comment,
-			SQLName:   e.SQLName,
+			TypeRef:   qualified(s.Name, e.SQLName),
 			ValueList: strings.Join(vals, ", "),
 		})
 	}
@@ -50,17 +72,22 @@ func schemaView(db *schema.Database, s *schema.Schema) map[string]any {
 	}
 
 	return map[string]any{
-		"Database": db.Name,
-		"Schema":   s.Name,
-		"URL":      db.URL,
-		"Enums":    enums,
-		"Tables":   tables,
+		"Header": header.Render("--", header.Info{
+			PluginVersion: db.PluginVersion,
+			ProtocVersion: db.ProtocVersion,
+			Source:        strings.Join(s.SourceProtos(), ", "),
+			Database:      db.Name,
+			Schema:        s.Name,
+		}),
+		"SchemaQ": quoteIdent(s.Name),
+		"Enums":   enums,
+		"Tables":  tables,
 	}
 }
 
 // tableViewOf renders one table's column defs, FK constraints, and indexes.
 func tableViewOf(s *schema.Schema, t *schema.Table) tableView {
-	tv := tableView{Comment: t.Comment, Name: t.Name}
+	tv := tableView{Comment: t.Comment, Ref: qualified(s.Name, t.Name)}
 
 	for _, col := range t.Columns {
 		tv.Items = append(tv.Items, itemView{Comment: col.Comment, Def: colDef(s, col)})
@@ -77,13 +104,17 @@ func tableViewOf(s *schema.Schema, t *schema.Table) tableView {
 		if name == "" {
 			name = "idx_" + t.Name + "_" + strings.Join(idx.Columns, "_")
 		}
+		cols := make([]string, len(idx.Columns))
+		for i, c := range idx.Columns {
+			cols[i] = quoteIdent(c)
+		}
 		unique := ""
 		if idx.Unique {
 			unique = "UNIQUE "
 		}
 		tv.Indexes = append(tv.Indexes, fmt.Sprintf(
-			"CREATE %sINDEX %s ON %s.%s (%s);",
-			unique, name, s.Name, t.Name, strings.Join(idx.Columns, ", "),
+			"CREATE %sINDEX %s ON %s (%s);",
+			unique, quoteIdent(name), qualified(s.Name, t.Name), strings.Join(cols, ", "),
 		))
 	}
 	return tv
@@ -94,9 +125,9 @@ func tableViewOf(s *schema.Schema, t *schema.Table) tableView {
 func colDef(s *schema.Schema, col *schema.Column) string {
 	sqlType := col.SQLType
 	if col.Enum != nil {
-		sqlType = s.Name + "." + col.Enum.SQLName
+		sqlType = qualified(s.Name, col.Enum.SQLName)
 	}
-	def := col.Name + "  " + sqlType
+	def := quoteIdent(col.Name) + "  " + sqlType
 	if col.NotNull {
 		def += "  NOT NULL"
 	}
@@ -121,13 +152,14 @@ func colDef(s *schema.Schema, col *schema.Column) string {
 // fkDef renders a FOREIGN KEY constraint using the schema-qualified referenced
 // table and the actual PK column resolved by the IR build pass.
 func fkDef(tableName string, fk *schema.ForeignKey) string {
-	refTable := fk.ReferencedTable
+	refTable := quoteIdent(fk.ReferencedTable)
 	if fk.ReferencedSchema != "" {
-		refTable = fk.ReferencedSchema + "." + fk.ReferencedTable
+		refTable = qualified(fk.ReferencedSchema, fk.ReferencedTable)
 	}
 	def := fmt.Sprintf(
-		"CONSTRAINT fk_%s_%s FOREIGN KEY (%s) REFERENCES %s(%s)",
-		tableName, fk.Column, fk.Column, refTable, fk.ReferencedColumn,
+		"CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s(%s)",
+		quoteIdent("fk_"+tableName+"_"+fk.Column), quoteIdent(fk.Column),
+		refTable, quoteIdent(fk.ReferencedColumn),
 	)
 	if fk.OnDelete != "" {
 		def += " ON DELETE " + fk.OnDelete

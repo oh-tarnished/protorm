@@ -6,6 +6,7 @@ package gorm
 import (
 	"strings"
 
+	"github.com/oh-tarnished/protorm/plugin/generator/header"
 	"github.com/oh-tarnished/protorm/plugin/generator/naming"
 	"github.com/oh-tarnished/protorm/plugin/generator/schema"
 	"github.com/oh-tarnished/protorm/plugin/generator/types"
@@ -75,12 +76,17 @@ func packageView(db *schema.Database, s *schema.Schema, pkg string) map[string]a
 	}
 
 	return map[string]any{
-		"Database": db.Name,
-		"Schema":   s.Name,
-		"Package":  pkg,
-		"Imports":  imports,
-		"Enums":    enumViews(s),
-		"Models":   models,
+		"Header": header.Render("//", header.Info{
+			PluginVersion: db.PluginVersion,
+			ProtocVersion: db.ProtocVersion,
+			Source:        strings.Join(s.SourceProtos(), ", "),
+			Database:      db.Name,
+			Schema:        s.Name,
+		}),
+		"Package": pkg,
+		"Imports": imports,
+		"Enums":   enumViews(s),
+		"Models":  models,
 	}
 }
 

@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+// Package strictidx.v1 defines an index over a column that does not exist, so
+// validateIndexes records a warning (an error under --strict).
+package strictidx.v1;
+
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "protorm/v1/annotations.proto";
+
+option (protorm.v1.datasource) = {
+  database: "strictidx_db"
+  provider: "postgres"
+  schema: "public"
+};
+
+message Gadget {
+  option (google.api.resource) = {
+    type: "strictidx.v1/Gadget"
+    pattern: "gadgets/{gadget}"
+    singular: "gadget"
+    plural: "gadgets"
+  };
+  option (protorm.v1.table) = {
+    indexes: [
+      {
+        columns: ["nonexistent_column"]
+      }
+    ]
+  };
+
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  string label = 2;
+}

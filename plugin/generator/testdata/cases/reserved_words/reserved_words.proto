@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+// Package reserved.v1 exercises SQL-reserved-word identifier quoting: the table
+// name and several columns collide with reserved words (user, order, select),
+// which must emit as quoted identifiers to produce valid DDL.
+package reserved.v1;
+
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "protorm/v1/annotations.proto";
+
+option (protorm.v1.datasource) = {
+  database: "reserved_db"
+  provider: "postgres"
+  schema: "public"
+};
+
+// Account is forced onto the reserved table name "user" via a table override,
+// with reserved-word columns and a composite UNIQUE index over them.
+message Account {
+  option (google.api.resource) = {
+    type: "reserved.v1/Account"
+    pattern: "accounts/{account}"
+    singular: "account"
+    plural: "accounts"
+  };
+  option (protorm.v1.table) = {
+    table: "user"
+    indexes: [
+      {
+        columns: [
+          "order",
+          "select"
+        ]
+        unique: true
+      }
+    ]
+  };
+
+  // name: IDENTIFIER → PRIMARY KEY.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // order is a reserved word; also carries a single-column index.
+  string order = 2 [(protorm.v1.col) = {index: true}];
+
+  // select is a reserved word.
+  string select = 3;
+
+  // status exercises a quoted, schema-qualified enum type reference.
+  Status status = 4 [(google.api.field_behavior) = REQUIRED];
+}
+
+// Status is the account state.
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_ACTIVE = 1;
+  STATUS_CLOSED = 2;
+}

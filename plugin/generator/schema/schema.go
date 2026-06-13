@@ -9,7 +9,11 @@
 //  4. protorm.v1.datasource / .table / .col → overrides for anything AIP can't express
 package schema
 
-import "google.golang.org/protobuf/compiler/protogen"
+import (
+	"sort"
+
+	"google.golang.org/protobuf/compiler/protogen"
+)
 
 // Target is implemented by every output backend (prisma, gorm, sql, csv).
 // It receives the fully-built IR and writes output via protogen.Plugin.
@@ -30,6 +34,12 @@ type Database struct {
 	URL      string    // connection URL; from (protorm.v1.datasource).url
 	Provider string    // "postgres" (default) or "mongodb"; from (protorm.v1.datasource).provider
 	Schemas  []*Schema // grouped by datasource.schema or resource.type prefix
+
+	// PluginVersion and ProtocVersion fill the generated-file banner. Set by the
+	// orchestrator from the build ldflags and the CodeGeneratorRequest; an empty
+	// value renders as "(unknown)".
+	PluginVersion string
+	ProtocVersion string
 }
 
 // Schema groups tables that share a namespace. Maps to a PostgreSQL schema.
@@ -37,6 +47,22 @@ type Schema struct {
 	Name   string   // e.g. "bookstore_v1"
 	Tables []*Table // every resource-annotated message under this namespace
 	Enums  []*Enum  // every proto enum referenced by a column in this namespace
+}
+
+// SourceProtos returns the distinct proto import paths contributing tables to
+// the schema, in sorted order — used for the generated-file banner's source
+// line when one output merges several protos.
+func (s *Schema) SourceProtos() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range s.Tables {
+		if t.SourceProto != "" && !seen[t.SourceProto] {
+			seen[t.SourceProto] = true
+			out = append(out, t.SourceProto)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Table maps one proto message (carrying google.api.resource) to one DB table.
@@ -63,6 +89,10 @@ type Table struct {
 	// for bookstore/v1/bookstore.proto). Drives fragment file splitting:
 	// <db>/<schema>/<SourceFile>.<provider>.prisma.
 	SourceFile string
+
+	// SourceProto is the full proto import path ("bookstore/v1/bookstore.proto"),
+	// shown on the generated-file banner's source line.
+	SourceProto string
 
 	Columns     []*Column
 	Indexes     []*Index

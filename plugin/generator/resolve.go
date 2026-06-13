@@ -10,8 +10,10 @@ import "github.com/oh-tarnished/protorm/plugin/generator/schema"
 // the real schema (datasource.schema overrides shift tables away from the
 // resource-type-derived schema), the real table name, and the real PK column.
 // It also appends a HasManyRef to the referenced table so both relation sides
-// exist. Tables not found in the database fall back to a conventional "id".
-func resolveRelations(db *schema.Database) {
+// exist. A reference to a model not present in the database is recorded on diags
+// (a typo'd resource_reference is the usual cause) and falls back to a
+// conventional "id" so non-strict generation still produces output.
+func resolveRelations(db *schema.Database, diags *diagnostics) {
 	type located struct {
 		schema *schema.Schema
 		table  *schema.Table
@@ -28,6 +30,9 @@ func resolveRelations(db *schema.Database) {
 			for _, fk := range t.ForeignKeys {
 				ref, ok := byModel[fk.ReferencedModel]
 				if !ok {
+					diags.warnf("table %q column %q references unknown model %q "+
+						"via resource_reference; FK falls back to column \"id\"",
+						t.Name, fk.Column, fk.ReferencedModel)
 					fk.ReferencedColumn = "id"
 					continue
 				}

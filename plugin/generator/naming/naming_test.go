@@ -43,6 +43,23 @@ func TestCamelFirst(t *testing.T) {
 	}
 }
 
+func TestSnakeCase(t *testing.T) {
+	cases := map[string]string{
+		"Book":        "book",
+		"BookAuthor":  "book_author",
+		"AuthorID":    "author_id",   // trailing acronym
+		"HTTPServer":  "http_server", // leading acronym run
+		"ISBN":        "isbn",        // all-caps acronym
+		"DisplayName": "display_name",
+		"shelves":     "shelves", // already lower (google.api plural)
+	}
+	for in, want := range cases {
+		if got := SnakeCase(in); got != want {
+			t.Errorf("SnakeCase(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestSnakePlural(t *testing.T) {
 	cases := map[string]string{
 		"Book":       "books",
