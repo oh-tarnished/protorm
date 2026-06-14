@@ -1,12 +1,12 @@
 database,schema,table,column,sql_type,not_null,primary_key,unique,default,description
 v1,embedded_v1,events,name,VARCHAR(255),true,true,false,,Resource name; the AIP identifier.
-v1,embedded_v1,events,created,TIMESTAMPTZ,false,false,false,,"Well-known type stays a scalar column, not a relation."
+v1,embedded_v1,events,attendees,VARCHAR(255),false,false,false,,Repeated attendee resource names.
+v1,embedded_v1,events,create_time,TIMESTAMPTZ,false,false,false,,"Well-known type stays a scalar column, not a relation."
 v1,embedded_v1,events,labels,JSONB,false,false,false,,Map fields stay JSONB.
 v1,embedded_v1,events,location_id,VARCHAR(255),true,false,false,,Foreign key to Location.
 v1,embedded_v1,events,billing_id,VARCHAR(255),false,false,false,,Foreign key to Location.
-v1,embedded_v1,locations,id,VARCHAR(255),true,true,false,,
-v1,embedded_v1,locations,city,VARCHAR(255),true,false,false,,
-v1,embedded_v1,locations,venue,VARCHAR(255),false,false,false,,
-v1,embedded_v1,attendees,name,VARCHAR(255),true,true,false,,
-v1,embedded_v1,attendees,email,VARCHAR(255),true,false,false,,
-v1,embedded_v1,attendees,event_id,VARCHAR(255),true,false,false,,Foreign key to Event.
+v1,embedded_v1,attendees,name,VARCHAR(255),true,true,false,,Resource name; the AIP identifier.
+v1,embedded_v1,attendees,email,VARCHAR(255),true,false,false,,Email address of the attendee.
+v1,embedded_v1,locations,id,VARCHAR(255),true,true,false,,"Unique identifier for the location, assigned by the server."
+v1,embedded_v1,locations,city,VARCHAR(255),true,false,false,,City where the location resides.
+v1,embedded_v1,locations,venue,VARCHAR(255),false,false,false,,Venue name within the city.

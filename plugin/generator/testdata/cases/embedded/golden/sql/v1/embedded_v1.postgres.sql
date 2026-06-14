@@ -15,30 +15,35 @@ CREATE SCHEMA IF NOT EXISTS "embedded_v1";
 CREATE TABLE "embedded_v1"."events" (
     -- Resource name; the AIP identifier.
     "name"  VARCHAR(255)  NOT NULL  PRIMARY KEY,
+    -- Repeated attendee resource names.
+    "attendees"  VARCHAR(255),
     -- Well-known type stays a scalar column, not a relation.
-    "created"  TIMESTAMPTZ,
+    "create_time"  TIMESTAMPTZ,
     -- Map fields stay JSONB.
     "labels"  JSONB,
     -- Foreign key to Location.
     "location_id"  VARCHAR(255)  NOT NULL,
     -- Foreign key to Location.
     "billing_id"  VARCHAR(255),
+    CONSTRAINT "fk_events_attendees" FOREIGN KEY ("attendees") REFERENCES "embedded_v1"."attendees"("name"),
     CONSTRAINT "fk_events_location_id" FOREIGN KEY ("location_id") REFERENCES "embedded_v1"."locations"("id"),
     CONSTRAINT "fk_events_billing_id" FOREIGN KEY ("billing_id") REFERENCES "embedded_v1"."locations"("id")
 );
 
--- Location is reachable from Event and so becomes its own table; its existing `id` field is promoted to the primary key.
-CREATE TABLE "embedded_v1"."locations" (
-    "id"  VARCHAR(255)  NOT NULL  PRIMARY KEY,
-    "city"  VARCHAR(255)  NOT NULL,
-    "venue"  VARCHAR(255)
-);
-
 -- Attendee carries an IDENTIFIER, so that field is its primary key.
 CREATE TABLE "embedded_v1"."attendees" (
+    -- Resource name; the AIP identifier.
     "name"  VARCHAR(255)  NOT NULL  PRIMARY KEY,
-    "email"  VARCHAR(255)  NOT NULL,
-    -- Foreign key to Event.
-    "event_id"  VARCHAR(255)  NOT NULL,
-    CONSTRAINT "fk_attendees_event_id" FOREIGN KEY ("event_id") REFERENCES "embedded_v1"."events"("name")
+    -- Email address of the attendee.
+    "email"  VARCHAR(255)  NOT NULL
+);
+
+-- Location is reachable from Event and so becomes its own table; its existing `id` field is promoted to the primary key.
+CREATE TABLE "embedded_v1"."locations" (
+    -- Unique identifier for the location, assigned by the server.
+    "id"  VARCHAR(255)  NOT NULL  PRIMARY KEY,
+    -- City where the location resides.
+    "city"  VARCHAR(255)  NOT NULL,
+    -- Venue name within the city.
+    "venue"  VARCHAR(255)
 );

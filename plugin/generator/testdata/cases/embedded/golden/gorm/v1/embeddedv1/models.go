@@ -20,8 +20,11 @@ import (
 type Event struct {
 	// Resource name; the AIP identifier.
 	Name string `gorm:"column:name;primaryKey;not null" json:"name"`
+	// Repeated attendee resource names.
+	Attendees  *string   `gorm:"column:attendees" json:"attendees,omitempty"`
+	Attendees2 *Attendee `gorm:"foreignKey:Attendees" json:"attendees2,omitempty"`
 	// Well-known type stays a scalar column, not a relation.
-	Created *time.Time `gorm:"column:created" json:"created,omitempty"`
+	CreateTime *time.Time `gorm:"column:create_time" json:"create_time,omitempty"`
 	// Map fields stay JSONB.
 	Labels json.RawMessage `gorm:"column:labels" json:"labels,omitempty"`
 	// Foreign key to Location.
@@ -30,16 +33,29 @@ type Event struct {
 	// Foreign key to Location.
 	BillingID *string   `gorm:"column:billing_id" json:"billing_id,omitempty"`
 	Billing   *Location `gorm:"foreignKey:BillingID" json:"billing,omitempty"`
-	// Back-relation: Attendee records that reference this via event_id.
-	Attendees []Attendee `gorm:"foreignKey:EventID" json:"attendees,omitempty"`
 }
 
 func (*Event) TableName() string { return "embedded_v1.events" }
 
+// Attendee carries an IDENTIFIER, so that field is its primary key.
+type Attendee struct {
+	// Resource name; the AIP identifier.
+	Name string `gorm:"column:name;primaryKey;not null" json:"name"`
+	// Email address of the attendee.
+	Email string `gorm:"column:email;not null" json:"email" validate:"required"`
+	// Back-relation: Event records that reference this via attendees.
+	Events []Event `gorm:"foreignKey:Attendees" json:"events,omitempty"`
+}
+
+func (*Attendee) TableName() string { return "embedded_v1.attendees" }
+
 // Location is reachable from Event and so becomes its own table; its existing `id` field is promoted to the primary key.
 type Location struct {
-	ID    string  `gorm:"column:id;primaryKey;not null" json:"id"`
-	City  string  `gorm:"column:city;not null" json:"city" validate:"required"`
+	// Unique identifier for the location, assigned by the server.
+	ID string `gorm:"column:id;primaryKey;not null" json:"id"`
+	// City where the location resides.
+	City string `gorm:"column:city;not null" json:"city" validate:"required"`
+	// Venue name within the city.
 	Venue *string `gorm:"column:venue" json:"venue,omitempty"`
 	// Back-relation: Event records that reference this via location_id.
 	Events []Event `gorm:"foreignKey:LocationID" json:"events,omitempty"`
@@ -48,14 +64,3 @@ type Location struct {
 }
 
 func (*Location) TableName() string { return "embedded_v1.locations" }
-
-// Attendee carries an IDENTIFIER, so that field is its primary key.
-type Attendee struct {
-	Name  string `gorm:"column:name;primaryKey;not null" json:"name"`
-	Email string `gorm:"column:email;not null" json:"email" validate:"required"`
-	// Foreign key to Event.
-	EventID string `gorm:"column:event_id;not null" json:"event_id" validate:"required"`
-	Event   *Event `gorm:"foreignKey:EventID" json:"event,omitempty"`
-}
-
-func (*Attendee) TableName() string { return "embedded_v1.attendees" }

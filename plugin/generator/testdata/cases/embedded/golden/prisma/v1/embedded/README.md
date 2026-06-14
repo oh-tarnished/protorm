@@ -15,17 +15,17 @@ erDiagram
     direction LR
     Attendee {
         string name PK
-        string event_id FK
     }
     Event {
         string name PK
+        string attendees FK
         string location_id FK
         string billing_id FK
     }
     Location {
         string id PK
     }
-    Attendee }o--|| Event : "event_id"
+    Event }o--|| Attendee : "attendees"
     Event }o--|| Location : "location_id"
     Event }o--|| Location : "billing_id"
 ```
@@ -39,10 +39,20 @@ Event exercises nested-message normalization: a singular message field becomes a
 | Column | Type | Null |
 | --- | --- | --- |
 | `name` | `VARCHAR(255)` | not null |
-| `created` | `TIMESTAMPTZ` | nullable |
+| `attendees` | `VARCHAR(255)` | nullable |
+| `create_time` | `TIMESTAMPTZ` | nullable |
 | `labels` | `JSONB` | nullable |
 | `location_id` | `VARCHAR(255)` | not null |
 | `billing_id` | `VARCHAR(255)` | nullable |
+
+### `Attendee` → `attendees`
+
+Attendee carries an IDENTIFIER, so that field is its primary key.
+
+| Column | Type | Null |
+| --- | --- | --- |
+| `name` | `VARCHAR(255)` | not null |
+| `email` | `VARCHAR(255)` | not null |
 
 ### `Location` → `locations`
 
@@ -53,13 +63,3 @@ Location is reachable from Event and so becomes its own table; its existing `id`
 | `id` | `VARCHAR(255)` | not null |
 | `city` | `VARCHAR(255)` | not null |
 | `venue` | `VARCHAR(255)` | nullable |
-
-### `Attendee` → `attendees`
-
-Attendee carries an IDENTIFIER, so that field is its primary key.
-
-| Column | Type | Null |
-| --- | --- | --- |
-| `name` | `VARCHAR(255)` | not null |
-| `email` | `VARCHAR(255)` | not null |
-| `event_id` | `VARCHAR(255)` | not null |

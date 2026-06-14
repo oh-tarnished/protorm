@@ -14,8 +14,14 @@ model Event {
   /// Resource name; the AIP identifier.
   name String @id @map("name")
 
+  /// Repeated attendee resource names.
+  attendees String? @map("attendees")
+
+  /// Relation to Attendee via attendees.
+  attendees2 Attendee? @relation(fields: [attendees], references: [name])
+
   /// Well-known type stays a scalar column, not a relation.
-  created DateTime? @map("created")
+  createTime DateTime? @map("create_time")
 
   /// Map fields stay JSONB.
   labels Json? @map("labels")
@@ -32,24 +38,38 @@ model Event {
   /// Relation to Location via billing_id.
   billing Location? @relation("EventBilling", fields: [billingID], references: [id])
 
-  /// Back-relation: Attendee records that reference this model via event_id.
-  attendees Attendee[]
-
   /// Maps the model to the "events" table in the database.
   @@map("events")
   /// Maps the model to the "embedded_v1" schema in the database.
   @@schema("embedded_v1")
 }
 
+/// Attendee carries an IDENTIFIER, so that field is its primary key.
+model Attendee {
+  /// Resource name; the AIP identifier.
+  name String @id @map("name")
+
+  /// Email address of the attendee.
+  email String @map("email")
+
+  /// Back-relation: Event records that reference this model via attendees.
+  events Event[]
+
+  /// Maps the model to the "attendees" table in the database.
+  @@map("attendees")
+  /// Maps the model to the "embedded_v1" schema in the database.
+  @@schema("embedded_v1")
+}
+
 /// Location is reachable from Event and so becomes its own table; its existing `id` field is promoted to the primary key.
 model Location {
-  /// Unique identifier for the record. Primary key mapped to "id".
+  /// Unique identifier for the location, assigned by the server.
   id String @id @map("id")
 
-  /// Required column mapped to "city".
+  /// City where the location resides.
   city String @map("city")
 
-  /// Optional column mapped to "venue".
+  /// Venue name within the city.
   venue String? @map("venue")
 
   /// Back-relation: Event records that reference this model via location_id.
@@ -60,26 +80,6 @@ model Location {
 
   /// Maps the model to the "locations" table in the database.
   @@map("locations")
-  /// Maps the model to the "embedded_v1" schema in the database.
-  @@schema("embedded_v1")
-}
-
-/// Attendee carries an IDENTIFIER, so that field is its primary key.
-model Attendee {
-  /// Unique identifier for the record. Primary key mapped to "name".
-  name String @id @map("name")
-
-  /// Required column mapped to "email".
-  email String @map("email")
-
-  /// Foreign key to Event.
-  eventID String @map("event_id")
-
-  /// Relation to Event via event_id.
-  event Event @relation(fields: [eventID], references: [name])
-
-  /// Maps the model to the "attendees" table in the database.
-  @@map("attendees")
   /// Maps the model to the "embedded_v1" schema in the database.
   @@schema("embedded_v1")
 }

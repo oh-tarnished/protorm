@@ -15,17 +15,17 @@ erDiagram
     direction LR
     Attendee {
         string name PK
-        string event_id FK
     }
     Event {
         string name PK
+        string attendees FK
         string location_id FK
         string billing_id FK
     }
     Location {
         string id PK
     }
-    Attendee }o--|| Event : "event_id"
+    Event }o--|| Attendee : "attendees"
     Event }o--|| Location : "location_id"
     Event }o--|| Location : "billing_id"
 ```
