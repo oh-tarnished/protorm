@@ -174,7 +174,7 @@ func SanitizeIdent(s string) string {
 		return "_"
 	}
 	c := s[0]
-	if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_') {
+	if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && c != '_' {
 		return "_" + s
 	}
 	return s

@@ -109,7 +109,7 @@ func renderReadme(db *schema.Database, dir string, tables []*schema.Table, enums
 	if rel == "" {
 		rel = "(root)"
 	}
-	fmt.Fprintf(&b, "# `%s/` — Prisma schema\n\n", dir)
+	fmt.Fprintf(&b, "# `%s/` — Prisma schema\n\n", rel)
 	fmt.Fprintf(&b, "Generated from Protobuf by protoc-gen-protorm. Source of truth is the `.proto` files — regenerate rather than editing.\n\n")
 	fmt.Fprintf(&b, "| Models | Enums |\n| ---: | ---: |\n| %d | %d |\n\n", len(uniqueTables(tables)), len(uniqueEnums(enums)))
 
