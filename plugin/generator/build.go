@@ -6,6 +6,8 @@ package generator
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"google.golang.org/genproto/googleapis/api/annotations"
@@ -24,12 +26,13 @@ import (
 func buildDatabases(p *protogen.Plugin, diags *diagnostics) ([]*schema.Database, error) {
 	byName := map[string]*schema.Database{}
 	var order []*schema.Database
+	ctx := newBuildCtx(p)
 
 	for _, f := range p.Files {
 		if !f.Generate {
 			continue
 		}
-		db, err := mergeFile(byName, f)
+		db, err := ctx.mergeFile(byName, f)
 		if err != nil {
 			return nil, err
 		}
@@ -38,11 +41,147 @@ func buildDatabases(p *protogen.Plugin, diags *diagnostics) ([]*schema.Database,
 		}
 	}
 
+	// Materialize embedded child tables and their FK columns before relations
+	// are resolved, so resolveRelations sees the full table set.
+	ctx.normalizeEmbeds(diags)
+
 	for _, db := range order {
+		qualifyModels(db, diags)
 		resolveRelations(db, diags)
+		dedupeEnums(db, diags)
 		validateIndexes(db, diags)
 	}
 	return order, nil
+}
+
+// qualifyModels enforces the Prisma rule that model names occupy one global
+// namespace per database (independent of @@schema). Normalizing embedded value
+// types pulls same-named messages (a per-package "Media", "Location", …) into
+// one database; here the colliding ones gain a schema-domain prefix
+// ("calendar" + "Media" → "CalendarMedia") so every model name is unique. Runs
+// before resolveRelations, which then reflects the new names onto every FK.
+func qualifyModels(db *schema.Database, diags *diagnostics) {
+	byName := map[string][]*schema.Table{}
+	for _, s := range db.Schemas {
+		for _, t := range s.Tables {
+			byName[t.ModelName] = append(byName[t.ModelName], t)
+		}
+	}
+	used := map[string]bool{}
+	for name, group := range byName {
+		if len(group) < 2 {
+			used[name] = true
+		}
+	}
+	names := make([]string, 0, len(byName))
+	for name := range byName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		group := byName[name]
+		if len(group) < 2 {
+			continue
+		}
+		sort.Slice(group, func(i, j int) bool {
+			if group[i].PgSchema != group[j].PgSchema {
+				return group[i].PgSchema < group[j].PgSchema
+			}
+			return group[i].ProtoMessage < group[j].ProtoMessage
+		})
+		used[group[0].ModelName] = true // first occurrence keeps the bare name
+		for _, t := range group[1:] {
+			base := naming.PascalGo(naming.SchemaDomain(t.PgSchema)) + t.ModelName
+			q := base
+			for n := 2; used[q]; n++ {
+				q = base + strconv.Itoa(n)
+			}
+			used[q] = true
+			diags.warnf("model %q is defined in multiple schemas; qualified to %q "+
+				"(Prisma model names are global)", t.ModelName, q)
+			t.ModelName = q
+		}
+	}
+}
+
+// dedupeEnums enforces the Prisma rule that enum type names occupy one global
+// namespace per database (independent of @@schema). It (1) collapses the same
+// proto enum built separately under multiple schemas onto a single canonical
+// definition, repointing every column to it, and (2) qualifies the names of
+// distinct enums that happen to share a simple name with a schema-derived
+// prefix ("State" in calendar_app and alarm_app → "State" / "AlarmAppState").
+func dedupeEnums(db *schema.Database, diags *diagnostics) {
+	// Pass 1: choose one canonical *Enum per proto full name (first seen wins).
+	canonical := map[string]*schema.Enum{}
+	for _, s := range db.Schemas {
+		for _, e := range s.Enums {
+			if _, ok := canonical[e.ProtoName]; !ok {
+				canonical[e.ProtoName] = e
+			}
+		}
+	}
+	// Repoint every enum column to its canonical definition, then keep only the
+	// canonical enum in its home schema and drop the duplicates elsewhere.
+	for _, s := range db.Schemas {
+		for _, t := range s.Tables {
+			for _, c := range t.Columns {
+				if c.Enum != nil {
+					c.Enum = canonical[c.Enum.ProtoName]
+				}
+			}
+		}
+		kept := s.Enums[:0]
+		for _, e := range s.Enums {
+			if canonical[e.ProtoName] == e {
+				kept = append(kept, e)
+			}
+		}
+		s.Enums = kept
+	}
+
+	// Pass 2: qualify simple-name collisions among distinct enums with a
+	// schema-domain prefix ("calendar" + "State" → "CalendarState"). Sorted for
+	// determinism; the first keeps the bare name, the rest gain a unique prefix.
+	byName := map[string][]*schema.Enum{}
+	for _, e := range canonical {
+		byName[e.Name] = append(byName[e.Name], e)
+	}
+	used := map[string]bool{}
+	for name, group := range byName {
+		if len(group) < 2 {
+			used[name] = true
+		}
+	}
+	names := make([]string, 0, len(byName))
+	for name := range byName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		group := byName[name]
+		if len(group) < 2 {
+			continue
+		}
+		sort.Slice(group, func(i, j int) bool {
+			if group[i].PgSchema != group[j].PgSchema {
+				return group[i].PgSchema < group[j].PgSchema
+			}
+			return group[i].ProtoName < group[j].ProtoName
+		})
+		used[group[0].Name] = true // first occurrence keeps the bare name
+		for _, e := range group[1:] {
+			base := naming.PascalGo(naming.SchemaDomain(e.PgSchema)) + e.Name
+			q := base
+			for n := 2; used[q]; n++ {
+				q = base + strconv.Itoa(n)
+			}
+			used[q] = true
+			diags.warnf("enum %q is defined in multiple schemas; qualified to %q "+
+				"(Prisma enum names are global)", name, q)
+			e.Name = q
+			e.SQLName = naming.SnakeCase(q)
+		}
+	}
 }
 
 // validateIndexes reports any index that names a column absent from its table,
@@ -83,7 +222,7 @@ func contains(dbs []*schema.Database, db *schema.Database) bool {
 // mergeFile folds one proto file into the database keyed by its datasource
 // name, creating the database on first sight. Returns nil when the file has
 // no resource-annotated messages.
-func mergeFile(byName map[string]*schema.Database, f *protogen.File) (*schema.Database, error) {
+func (ctx *buildCtx) mergeFile(byName map[string]*schema.Database, f *protogen.File) (*schema.Database, error) {
 	ds := datasourceOpts(f)
 	name := ds.GetDatabase()
 	if name == "" {
@@ -109,7 +248,7 @@ func mergeFile(byName map[string]*schema.Database, f *protogen.File) (*schema.Da
 		}
 	}
 
-	if added := addFileTables(db, f, ds.GetSchema()); !added && !ok {
+	if added := ctx.addFileTables(db, f, ds.GetSchema()); !added && !ok {
 		delete(byName, name)
 		return nil, nil
 	}
@@ -119,7 +258,7 @@ func mergeFile(byName map[string]*schema.Database, f *protogen.File) (*schema.Da
 // addFileTables appends every resource-annotated message in f to db.
 // schemaOverride, when non-empty, replaces the resource-type-derived schema
 // for all tables in this file. Reports whether anything was added.
-func addFileTables(db *schema.Database, f *protogen.File, schemaOverride string) bool {
+func (ctx *buildCtx) addFileTables(db *schema.Database, f *protogen.File, schemaOverride string) bool {
 	srcPath := f.Desc.Path()
 	src := sourceFileBase(srcPath)
 	added := false
@@ -146,10 +285,23 @@ func addFileTables(db *schema.Database, f *protogen.File, schemaOverride string)
 			sName = schemaOverride
 		}
 		s := schemaByName(db, sName)
-		s.Tables = append(s.Tables, buildTable(s, msg, tName, src, srcPath))
+		t := ctx.buildTable(db, s, msg, tName, src, srcPath)
+		t.PgSchema = sName
+		t.SourceDir = protoDirNoVersion(srcPath)
+		s.Tables = append(s.Tables, t)
 		added = true
 	}
 	return added
+}
+
+// startsWithLetter reports whether s begins with an ASCII letter — the leading
+// character Prisma requires for an enum value identifier.
+func startsWithLetter(s string) bool {
+	if s == "" {
+		return false
+	}
+	c := s[0]
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
 }
 
 // schemaByName returns the named schema in db, creating it on first use.
@@ -165,7 +317,7 @@ func schemaByName(db *schema.Database, name string) *schema.Schema {
 }
 
 // buildTable maps one resource-annotated message to a *schema.Table.
-func buildTable(s *schema.Schema, msg *protogen.Message, name, src, srcPath string) *schema.Table {
+func (ctx *buildCtx) buildTable(db *schema.Database, s *schema.Schema, msg *protogen.Message, name, src, srcPath string) *schema.Table {
 	t := &schema.Table{
 		Name:         name,
 		Comment:      cleanComment(msg.Comments.Leading),
@@ -175,7 +327,43 @@ func buildTable(s *schema.Schema, msg *protogen.Message, name, src, srcPath stri
 		SourceProto:  srcPath,
 	}
 
+	ctx.populateColumns(db, s, t, msg)
+
+	tOpts := tableOpts(msg)
+	applyIDStrategy(t, tOpts.GetId())
+	applyTimestamps(t, tOpts.GetTimestamps())
+
+	for _, idx := range tOpts.GetIndexes() {
+		t.Indexes = append(t.Indexes, &schema.Index{
+			Name: idx.GetIndex(), Columns: idx.GetColumns(), Unique: idx.GetUnique(),
+		})
+	}
+	return t
+}
+
+// populateColumns maps msg's fields onto t. Scalar/enum fields become columns;
+// string fields with google.api.resource_reference become FK columns; and
+// user message-typed fields become embed requests (normalized into related
+// tables by normalizeEmbeds) instead of lossy JSONB blobs — unless the field
+// is skipped or pins an explicit column type. Shared by buildTable (resources)
+// and materialize (embedded children).
+func (ctx *buildCtx) populateColumns(db *schema.Database, s *schema.Schema, t *schema.Table, msg *protogen.Message) {
 	for _, f := range msg.Fields {
+		cOpts := colOpts(f)
+		if target := normalizableMessage(f); target != "" && cOpts.GetType() == "" {
+			if cOpts.GetSkip() {
+				continue
+			}
+			ctx.embeds = append(ctx.embeds, &embedReq{
+				db: db, schemaName: s.Name, parent: t, field: f,
+				targetMsg: target, repeated: f.Desc.IsList(),
+				optional: !isRequiredField(f),
+				onDelete: refAction(cOpts.GetOnDelete()),
+				onUpdate: refAction(cOpts.GetOnUpdate()),
+			})
+			continue
+		}
+
 		col := buildColumn(s, f)
 		if col == nil {
 			continue
@@ -188,7 +376,6 @@ func buildTable(s *schema.Schema, msg *protogen.Message, name, src, srcPath stri
 			refSchema, refTable := schemaTable(ref.GetType(), "")
 			refModel := modelNameFromType(ref.GetType())
 			col.FKModel = refModel
-			cOpts := colOpts(f)
 			t.ForeignKeys = append(t.ForeignKeys, &schema.ForeignKey{
 				Column:           col.Name,
 				ReferencedSchema: refSchema,
@@ -200,17 +387,6 @@ func buildTable(s *schema.Schema, msg *protogen.Message, name, src, srcPath stri
 			})
 		}
 	}
-
-	tOpts := tableOpts(msg)
-	applyIDStrategy(t, tOpts.GetId())
-	applyTimestamps(t, tOpts.GetTimestamps())
-
-	for _, idx := range tOpts.GetIndexes() {
-		t.Indexes = append(t.Indexes, &schema.Index{
-			Name: idx.GetIndex(), Columns: idx.GetColumns(), Unique: idx.GetUnique(),
-		})
-	}
-	return t
 }
 
 // applyIDStrategy synthesizes a generated `id` PK column and demotes any
@@ -324,17 +500,33 @@ func enumByName(s *schema.Schema, e *protogen.Enum) *schema.Enum {
 		}
 	}
 	en := &schema.Enum{
-		Name:       name,
-		SQLName:    naming.SnakeCase(name),
-		Comment:    cleanComment(e.Comments.Leading),
-		SourceFile: sourceFileBase(e.Desc.ParentFile().Path()),
+		Name:        name,
+		SQLName:     naming.SnakeCase(name),
+		ProtoName:   string(e.Desc.FullName()),
+		PgSchema:    s.Name,
+		Comment:     cleanComment(e.Comments.Leading),
+		SourceFile:  sourceFileBase(e.Desc.ParentFile().Path()),
+		SourceProto: e.Desc.ParentFile().Path(),
+		SourceDir:   protoDirNoVersion(e.Desc.ParentFile().Path()),
 	}
 	for _, v := range e.Values {
 		full := string(v.Desc.Name())
-		short := naming.EnumValueName(name, full)
+		// MapName is the SCREAMING_SNAKE stored value (read by every target). Name
+		// is the rendered identifier and must start with a letter (a Prisma enum
+		// value rule): when stripping the enum prefix leaves a digit-leading value
+		// (ASPECT_RATIO_3_4 → "3_4"), fall back to the full proto value name, which
+		// is letter-leading. MapName keeps the short form for the DB ("3_4").
+		mapName := naming.ScreamingSnake(naming.EnumValueName(name, full))
+		valName := mapName
+		if !startsWithLetter(valName) {
+			valName = naming.ScreamingSnake(full)
+		}
+		if !startsWithLetter(valName) {
+			valName = "V" + valName // rare: a proto value that itself isn't letter-leading
+		}
 		en.Values = append(en.Values, &schema.EnumValue{
-			Name:    short,
-			MapName: strings.ToLower(short),
+			Name:    valName,
+			MapName: mapName,
 			Comment: cleanComment(v.Comments.Leading),
 		})
 	}

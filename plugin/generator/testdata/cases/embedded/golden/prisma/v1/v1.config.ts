@@ -3,8 +3,8 @@
 // 	protoc-gen-protorm (unknown)
 // 	protoc             (unknown)
 //
-// database: wkt_db
-// schemas:  kitchen
+// database: v1
+// schemas:  embedded_v1
 //
 // Prisma 7 configuration; connection URLs are environment-driven.
 //
@@ -26,6 +26,6 @@ export default defineConfig({
 	},
 	datasource: {
 		// Single database URL for all schemas.
-		url: env("WKT_DB_DATABASE_URL"),
+		url: env("V1_DATABASE_URL"),
 	},
 });

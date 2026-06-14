@@ -109,3 +109,73 @@ func EnumValueName(enumName, valueName string) string {
 	}
 	return valueName
 }
+
+// ScreamingSnake normalizes an identifier to SCREAMING_SNAKE_CASE: uppercase
+// with `_` word separators. Already-SCREAMING_SNAKE input is preserved
+// ("FOCUS_TIME" → "FOCUS_TIME"); camelCase/PascalCase boundaries become
+// underscores ("focusTime" → "FOCUS_TIME"). Runs of underscores collapse to one.
+// Used to keep generated enum values identical across the Prisma, GORM, and SQL
+// targets (all read EnumValue.MapName).
+func ScreamingSnake(s string) string {
+	var b strings.Builder
+	prevLower := false
+	for _, r := range s {
+		isUpper := r >= 'A' && r <= 'Z'
+		if isUpper && prevLower {
+			b.WriteByte('_')
+		}
+		b.WriteRune(r)
+		prevLower = r >= 'a' && r <= 'z'
+	}
+	out := strings.ToUpper(b.String())
+	for strings.Contains(out, "__") {
+		out = strings.ReplaceAll(out, "__", "_")
+	}
+	return out
+}
+
+// SchemaDomain extracts the domain segment from a schema name for use as a
+// disambiguating prefix on globally-namespaced Prisma model/enum names: the last
+// underscore segment with any trailing API version dropped.
+// "machanirobotics_app_productivity_calendar_v1" → "calendar";
+// "store_apps_health_wellness_v1" → "wellness"; "public" → "public".
+func SchemaDomain(schemaName string) string {
+	parts := strings.Split(schemaName, "_")
+	for len(parts) > 1 {
+		last := parts[len(parts)-1]
+		if len(last) >= 2 && last[0] == 'v' && last[1] >= '0' && last[1] <= '9' {
+			parts = parts[:len(parts)-1]
+			continue
+		}
+		break
+	}
+	if len(parts) == 0 {
+		return schemaName
+	}
+	return parts[len(parts)-1]
+}
+
+// StripIDSuffix drops a trailing "_id" so a FK column yields a relation stem:
+// "location_id" → "location", "organizer_user_app_ref_id" →
+// "organizer_user_app_ref". A bare "id" (or a name without the suffix) is
+// returned unchanged.
+func StripIDSuffix(col string) string {
+	if s := strings.TrimSuffix(col, "_id"); s != "" && s != col {
+		return s
+	}
+	return col
+}
+
+// SanitizeIdent makes s a valid Prisma/SQL identifier by prefixing `_` when it
+// would otherwise begin with a non-letter (e.g. a digit-leading enum value
+// "9S" → "_9S"). The empty string maps to "_".
+func SanitizeIdent(s string) string {
+	if s == "" {
+		return "_"
+	}
+	c := s[0]
+	if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_') {
+		return "_" + s
+	}
+	return s
+}

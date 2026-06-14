@@ -103,3 +103,29 @@ func sourceFileBase(path string) string {
 	}
 	return strings.TrimSuffix(path, ".proto")
 }
+
+// protoDirNoVersion returns the proto file's directory with a trailing API
+// version segment dropped, so the generated tree mirrors the proto tree without
+// the version noise: "store/apps/productivity/calendar/v1/event.proto" →
+// "store/apps/productivity/calendar". A file at the module root returns "".
+func protoDirNoVersion(path string) string {
+	i := strings.LastIndexByte(path, '/')
+	if i < 0 {
+		return ""
+	}
+	dir := path[:i]
+	if last := strings.LastIndexByte(dir, '/'); last >= 0 {
+		if isVersionSegment(dir[last+1:]) {
+			return dir[:last]
+		}
+	} else if isVersionSegment(dir) {
+		return ""
+	}
+	return dir
+}
+
+// isVersionSegment reports whether seg is an API version directory like "v1",
+// "v2", "v1alpha1", or "v1beta1": a 'v' followed by a digit.
+func isVersionSegment(seg string) bool {
+	return len(seg) >= 2 && seg[0] == 'v' && seg[1] >= '0' && seg[1] <= '9'
+}

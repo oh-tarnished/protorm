@@ -28,6 +28,7 @@ import (
 
 	"github.com/oh-tarnished/protorm/plugin/generator"
 	"google.golang.org/protobuf/compiler/protogen"
+	"google.golang.org/protobuf/types/pluginpb"
 )
 
 // Build metadata, injected at release time via -ldflags "-X main.version=...".
@@ -61,6 +62,10 @@ func main() {
 	protogen.Options{
 		ParamFunc: flags.Set,
 	}.Run(func(p *protogen.Plugin) error {
+		// Proto3 `optional` is fully supported (it only affects field presence,
+		// which protorm reads via field_behavior, not synthetic oneofs); declare
+		// it so buf/protoc don't warn for files that use it.
+		p.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
 		return generator.Generate(p, generator.Options{
 			// *target/*strict are dereferenced inside the closure so that
 			// ParamFunc has already populated them before we read the values.

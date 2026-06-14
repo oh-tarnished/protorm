@@ -103,3 +103,33 @@ func TestEnumValueName(t *testing.T) {
 		}
 	}
 }
+
+func TestScreamingSnake(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"FICTION", "FICTION"},
+		{"FOCUS_TIME", "FOCUS_TIME"},
+		{"focusTime", "FOCUS_TIME"},
+		{"FocusTime", "FOCUS_TIME"},
+		{"9S", "9S"},
+		{"out_of_office", "OUT_OF_OFFICE"},
+	}
+	for _, c := range cases {
+		if got := ScreamingSnake(c.in); got != c.want {
+			t.Errorf("ScreamingSnake(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestSanitizeIdent(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"FICTION", "FICTION"},
+		{"9S", "_9S"},
+		{"_9S", "_9S"},
+		{"", "_"},
+	}
+	for _, c := range cases {
+		if got := SanitizeIdent(c.in); got != c.want {
+			t.Errorf("SanitizeIdent(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

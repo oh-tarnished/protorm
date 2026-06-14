@@ -4,6 +4,7 @@ package gorm
 // enum consts, and conditional imports. The template is presentation only.
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/oh-tarnished/protorm/plugin/generator/header"
@@ -37,6 +38,12 @@ func packageView(db *schema.Database, s *schema.Schema, pkg string) map[string]a
 			Name:      t.ModelName,
 			TableName: s.Name + "." + t.Name,
 		}
+		// Reserve scalar Go field names so association fields stay unique — two
+		// FKs to the same model must not produce two identically-named fields.
+		used := map[string]bool{}
+		for _, col := range t.Columns {
+			used[naming.PascalGo(col.Name)] = true
+		}
 		for _, col := range t.Columns {
 			gt := goType(col)
 			needTime = needTime || strings.Contains(gt, "time.Time")
@@ -47,21 +54,25 @@ func packageView(db *schema.Database, s *schema.Schema, pkg string) map[string]a
 				Comment: col.Comment,
 				Decl:    goField + " " + gt + " `" + structTag(col) + "`",
 			})
-			// BelongsTo association: emitted alongside the FK column.
+			// BelongsTo association: emitted alongside the FK column. The field is
+			// named after the FK column (minus _id) so multiple references to the
+			// same model stay distinct; GORM resolves the link via foreignKey.
 			if col.FKModel != "" {
+				assoc := uniqueGoName(naming.PascalGo(naming.StripIDSuffix(col.Name)), used)
 				m.Fields = append(m.Fields, fieldView{
-					Decl: col.FKModel + " *" + col.FKModel +
+					Decl: assoc + " *" + col.FKModel +
 						" `gorm:\"foreignKey:" + goField + constraintTag(t, col.Name) +
-						"\" json:\"" + strings.ToLower(col.FKModel) + ",omitempty\"`",
+						"\" json:\"" + strings.ToLower(assoc) + ",omitempty\"`",
 				})
 			}
 		}
 		// HasMany back-references (e.g. Author.Books []Book).
 		for _, hm := range t.HasMany {
+			field := uniqueGoName(naming.PascalGo(hm.Field), used)
 			m.Fields = append(m.Fields, fieldView{
 				Comment: "Back-relation: " + hm.Model + " records that reference this via " + hm.ViaFK + ".",
-				Decl: naming.PascalGo(hm.Field) + " []" + hm.Model +
-					" `gorm:\"foreignKey:" + naming.PascalGo(hm.ViaFK) + "\" json:\"" + strings.ToLower(hm.Field) + ",omitempty\"`",
+				Decl: field + " []" + hm.Model +
+					" `gorm:\"foreignKey:" + naming.PascalGo(hm.ViaFK) + "\" json:\"" + strings.ToLower(field) + ",omitempty\"`",
 			})
 		}
 		models = append(models, m)
@@ -187,6 +198,18 @@ func constraintTag(t *schema.Table, colName string) string {
 		}
 	}
 	return ""
+}
+
+// uniqueGoName returns base, or base with the smallest numeric suffix free in
+// used, recording the result — keeps association fields from colliding with
+// struct columns or one another.
+func uniqueGoName(base string, used map[string]bool) string {
+	name := base
+	for i := 2; used[name]; i++ {
+		name = base + strconv.Itoa(i)
+	}
+	used[name] = true
+	return name
 }
 
 // commentOr returns comment when non-empty, otherwise the fallback.
