@@ -7,6 +7,9 @@ import "google/api/resource.proto";
 import "google/protobuf/timestamp.proto";
 
 option go_package = "example.com/test/gen;embeddedv1";
+option java_multiple_files = true;
+option java_outer_classname = "EmbeddedProto";
+option java_package = "com.example.embedded.v1";
 
 // Event exercises nested-message normalization: a singular message field
 // becomes a belongs-to relation, a repeated message field becomes a has-many,
@@ -25,11 +28,11 @@ message Event {
   // Required single embedded message → belongs-to (event holds location_id).
   Location location = 2 [(google.api.field_behavior) = REQUIRED];
 
-  // Repeated embedded message → has-many (attendee holds event_id).
-  repeated Attendee attendees = 3;
+  // Repeated attendee resource names.
+  repeated string attendees = 3 [(google.api.resource_reference) = {type: "embedded.v1/Attendee"}];
 
   // Well-known type stays a scalar column, not a relation.
-  google.protobuf.Timestamp created = 4;
+  google.protobuf.Timestamp create_time = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Map fields stay JSONB.
   map<string, string> labels = 5;
@@ -42,13 +45,25 @@ message Event {
 // Location is reachable from Event and so becomes its own table; its existing
 // `id` field is promoted to the primary key.
 message Location {
+  // Unique identifier for the location, assigned by the server.
   string id = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // City where the location resides.
   string city = 2 [(google.api.field_behavior) = REQUIRED];
+  // Venue name within the city.
   string venue = 3;
 }
 
 // Attendee carries an IDENTIFIER, so that field is its primary key.
 message Attendee {
+  option (google.api.resource) = {
+    type: "embedded.v1/Attendee"
+    pattern: "events/{event}/attendees/{attendee}"
+    singular: "attendee"
+    plural: "attendees"
+  };
+
+  // Resource name; the AIP identifier.
   string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+  // Email address of the attendee.
   string email = 2 [(google.api.field_behavior) = REQUIRED];
 }
