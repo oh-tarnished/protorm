@@ -94,6 +94,15 @@ type Table struct {
 	// shown on the generated-file banner's source line.
 	SourceProto string
 
+	// SourceDir is the proto file's directory with the version segment dropped
+	// ("store/apps/.../calendar/v1/event.proto" → "store/apps/.../calendar"),
+	// driving the mirrored output path so the Prisma tree matches the proto tree.
+	SourceDir string
+
+	// PgSchema is the postgres schema this table is placed in. Lets one proto
+	// file contribute models to several schemas (per-table @@schema override).
+	PgSchema string
+
 	Columns     []*Column
 	Indexes     []*Index
 	ForeignKeys []*ForeignKey
@@ -160,16 +169,34 @@ type Column struct {
 // Enum maps one proto enum referenced by a column to a database enum type.
 type Enum struct {
 	// Name is the PascalCase enum type name from the proto enum simple name.
+	// Globally unique within a database: when two distinct proto enums share a
+	// simple name, the later one is qualified with a schema-derived prefix
+	// (Prisma enums occupy one global namespace regardless of @@schema).
 	Name string
 
 	// SQLName is the snake_case type name used in DDL ("Genre" → "genre").
 	SQLName string
+
+	// ProtoName is the fully-qualified proto enum name ("bookstore.v1.Genre"),
+	// used to deduplicate the same enum referenced from multiple schemas.
+	ProtoName string
+
+	// PgSchema is the postgres schema this enum is placed in (its home schema),
+	// used for the per-model/per-enum @@schema directive.
+	PgSchema string
 
 	// Comment is the proto enum's leading comment, normalized for embedding.
 	Comment string
 
 	// SourceFile is the proto file base name the enum was declared in.
 	SourceFile string
+
+	// SourceProto is the full proto import path the enum was declared in.
+	SourceProto string
+
+	// SourceDir is the enum's proto directory with the version segment dropped,
+	// mirroring Table.SourceDir for fragment file placement.
+	SourceDir string
 
 	Values []*EnumValue
 }
@@ -180,7 +207,10 @@ type EnumValue struct {
 	// ("GENRE_FICTION" → "FICTION"). Stays SCREAMING_SNAKE for Prisma/Go consts.
 	Name string
 
-	// MapName is the lowercase storage form written to the database ("fiction").
+	// MapName is the canonical SCREAMING_SNAKE storage form written to the
+	// database ("FICTION"), identical across the Prisma, GORM, and SQL targets.
+	// Equals Name except when Name was sanitized to a valid identifier (a
+	// digit-leading value: Name "_9S", MapName "9S").
 	MapName string
 
 	// Comment is the proto value's leading comment, normalized for embedding.
@@ -201,6 +231,11 @@ type HasManyRef struct {
 	// ViaFK is the FK column name in the child table (snake_case, e.g. "author_id").
 	// Each generator converts this to its own naming convention as needed.
 	ViaFK string
+
+	// RelationName matches the paired ForeignKey.RelationName, naming the relation
+	// on the has-many side when a model pair has more than one relation. Empty
+	// otherwise.
+	RelationName string
 }
 
 // Index describes a multi-column index declared via protorm.v1.table.indexes.
@@ -220,8 +255,21 @@ type ForeignKey struct {
 	ReferencedModel  string // singular Go model name (e.g. "Author")
 	ReferencedColumn string // actual PK column; "id" when table not found in database
 
+	// ReferencedProto is the full proto message name of the target, set for
+	// synthesized embed relations so resolution picks the exact table even when
+	// several models share a simple name (e.g. a per-package "Media"). Empty for
+	// resource_reference FKs, which resolve by model name.
+	ReferencedProto string
+
 	// OnDelete / OnUpdate are SQL referential actions ("CASCADE", "SET NULL", …)
 	// from protorm.v1.col.on_delete / on_update. Empty means database default.
 	OnDelete string
 	OnUpdate string
+
+	// RelationName disambiguates multiple relations between the same two models.
+	// Prisma requires a matching @relation("name") on both the belongs-to and the
+	// has-many side when more than one relation connects a model pair. Empty when
+	// the pair has a single relation (no name needed). Mirrored onto the paired
+	// HasManyRef.RelationName.
+	RelationName string
 }

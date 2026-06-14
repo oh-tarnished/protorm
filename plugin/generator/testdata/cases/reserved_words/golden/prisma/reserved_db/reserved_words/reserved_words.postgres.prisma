@@ -5,20 +5,20 @@
 // source: reserved_words.proto
 //
 // database: reserved_db
-// schema:   public
+// schema:   
 //
 // protorm — https://github.com/oh-tarnished/protorm
 
 /// State is the account lifecycle state.
 enum State {
   /// STATE_UNSPECIFIED is the zero value; the account state is unset.
-  UNSPECIFIED @map("unspecified")
+  UNSPECIFIED
 
   /// STATE_ACTIVE marks an open, usable account.
-  ACTIVE @map("active")
+  ACTIVE
 
   /// STATE_CLOSED marks a deactivated account.
-  CLOSED @map("closed")
+  CLOSED
 
   /// Maps the enum to the "state" type in the database.
   @@map("state")

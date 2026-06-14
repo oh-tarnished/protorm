@@ -16,9 +16,9 @@ type State string
 
 // State values as stored in the database.
 const (
-	StateUnspecified State = "unspecified"
-	StateActive      State = "active"
-	StateClosed      State = "closed"
+	StateUnspecified State = "UNSPECIFIED"
+	StateActive      State = "ACTIVE"
+	StateClosed      State = "CLOSED"
 )
 
 // Account is forced onto the reserved table name "user" via a table override, with reserved-word columns and a composite UNIQUE index over them.

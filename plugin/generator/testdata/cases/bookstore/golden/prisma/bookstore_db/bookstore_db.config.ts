@@ -10,15 +10,16 @@
 //
 // protorm — https://github.com/oh-tarnished/protorm
 
+import { resolve } from "node:path";
 import { config } from "dotenv";
 import { defineConfig, env } from "prisma/config";
-import { resolve } from "path";
 
 // Prisma 7 no longer auto-loads .env, so load it here before env() is read.
 config({ path: resolve(__dirname, ".env") });
 
 export default defineConfig({
-	// All .prisma files in this folder and its subdirectories are loaded.
+	// Point to the folder holding every .prisma file; subdirectories are
+	// discovered automatically, so all schemas load from one config.
 	schema: resolve(__dirname),
 	migrations: {
 		path: resolve(__dirname, "migrations"),

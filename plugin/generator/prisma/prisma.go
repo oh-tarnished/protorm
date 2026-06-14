@@ -49,19 +49,88 @@ func (g *Generator) Generate(p *protogen.Plugin, dbs []*schema.Database) error {
 			return err
 		}
 
-		for _, s := range db.Schemas {
-			for _, domain := range domainsOf(s) {
-				path := fmt.Sprintf("%s/%s/%s.%s.prisma",
-					db.Name, s.Name, domain, provider.FragmentExt())
-				ff := p.NewGeneratedFile(path, "")
-				view := fragmentView(db, s, domain, provider)
-				if err := templates.Render(ff, "fragment.prisma.tpl", view); err != nil {
-					return fmt.Errorf("prisma: %s: %w", path, err)
-				}
+		// One fragment per source proto file, placed at a path mirroring the
+		// proto directory tree so the Prisma layout matches the protobuf layout.
+		// A single proto may contribute models to several @@schemas, so each
+		// model/enum carries its own schema rather than the fragment as a whole.
+		groups := groupByProto(db)
+		for _, g := range groups {
+			dir := fragmentDir(db.Name, g.sourceDir, g.fileBase)
+			path := fmt.Sprintf("%s/%s.%s.prisma", dir, g.fileBase, provider.FragmentExt())
+			ff := p.NewGeneratedFile(path, "")
+			if err := templates.Render(ff, "fragment.prisma.tpl", fragmentView(db, g, provider)); err != nil {
+				return fmt.Errorf("prisma: %s: %w", path, err)
 			}
+		}
+
+		// A README.md with a Mermaid ER diagram in every folder of the tree.
+		if err := writeReadmes(p, db, groups, provider); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// fragmentGroup is one source proto file's tables and enums, gathered across
+// every schema they were sorted into.
+type fragmentGroup struct {
+	sourceProto string
+	sourceDir   string
+	fileBase    string
+	tables      []*schema.Table
+	enums       []*schema.Enum
+}
+
+// groupByProto buckets a database's tables and enums by their source proto file,
+// in deterministic order, so each proto renders to exactly one fragment file.
+func groupByProto(db *schema.Database) []fragmentGroup {
+	idx := map[string]*fragmentGroup{}
+	var order []string
+	get := func(proto, dir, base string) *fragmentGroup {
+		g, ok := idx[proto]
+		if !ok {
+			g = &fragmentGroup{sourceProto: proto, sourceDir: dir, fileBase: base}
+			idx[proto] = g
+			order = append(order, proto)
+		}
+		return g
+	}
+	for _, s := range db.Schemas {
+		for _, t := range s.Tables {
+			g := get(t.SourceProto, t.SourceDir, t.SourceFile)
+			g.tables = append(g.tables, t)
+		}
+		for _, e := range s.Enums {
+			g := get(e.SourceProto, e.SourceDir, e.SourceFile)
+			g.enums = append(g.enums, e)
+		}
+	}
+	sort.Strings(order)
+	out := make([]fragmentGroup, 0, len(order))
+	for _, p := range order {
+		out = append(out, *idx[p])
+	}
+	return out
+}
+
+// fragmentDir mirrors the proto directory under the database root. The proto
+// tree's leading segment (the module/service root, e.g. "store") is dropped —
+// the database name already stands in for it — and the file base name becomes a
+// leaf folder so each proto gets its own directory (with room for a README):
+//
+//	db "users", dir "store/apps/productivity/calendar", base "event"
+//	  → "users/apps/productivity/calendar/event"
+func fragmentDir(dbName, sourceDir, fileBase string) string {
+	rest := ""
+	if i := strings.IndexByte(sourceDir, '/'); i >= 0 {
+		rest = sourceDir[i+1:]
+	}
+	parts := []string{dbName}
+	if rest != "" {
+		parts = append(parts, rest)
+	}
+	parts = append(parts, fileBase)
+	return strings.Join(parts, "/")
 }
 
 // schemaFileView prepares the datasource template data for one database.
@@ -114,12 +183,13 @@ func configView(db *schema.Database) map[string]any {
 }
 
 // scaffoldFiles maps each scaffold output path suffix to its template name.
+// scaffoldFiles are the static project files; the README.md tree is generated
+// separately by writeReadmes (one per folder, with a Mermaid ER diagram).
 var scaffoldFiles = []struct{ name, tpl string }{
 	{"package.json", "package.json.tpl"},
 	{"tsconfig.json", "tsconfig.json.tpl"},
 	{".env.example", "env.example.tpl"},
 	{".gitignore", "gitignore.tpl"},
-	{"README.md", "readme.md.tpl"},
 }
 
 // writeScaffold emits the package.json, tsconfig.json, .env.example, .gitignore,
@@ -161,22 +231,4 @@ func exampleURL(db *schema.Database, provider types.Provider) string {
 		return "mongodb://localhost:27017/" + db.Name
 	}
 	return "postgresql://user:password@localhost:5432/" + db.Name
-}
-
-// domainsOf lists the distinct source proto file base names contributing
-// tables or enums to s, in deterministic order.
-func domainsOf(s *schema.Schema) []string {
-	seen := map[string]bool{}
-	for _, t := range s.Tables {
-		seen[t.SourceFile] = true
-	}
-	for _, e := range s.Enums {
-		seen[e.SourceFile] = true
-	}
-	out := make([]string, 0, len(seen))
-	for d := range seen {
-		out = append(out, d)
-	}
-	sort.Strings(out)
-	return out
 }

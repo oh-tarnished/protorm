@@ -12,7 +12,7 @@
 CREATE SCHEMA IF NOT EXISTS "public";
 
 -- State is the account lifecycle state.
-CREATE TYPE "public"."state" AS ENUM ('unspecified', 'active', 'closed');
+CREATE TYPE "public"."state" AS ENUM ('UNSPECIFIED', 'ACTIVE', 'CLOSED');
 
 -- Account is forced onto the reserved table name "user" via a table override, with reserved-word columns and a composite UNIQUE index over them.
 CREATE TABLE "public"."user" (
