@@ -41,4 +41,3 @@ Sink is one table holding every interesting type mapping.
 | `tags` | `VARCHAR(255)[]` | nullable |
 | `scores` | `INTEGER[]` | nullable |
 | `attributes` | `JSONB` | nullable |
-

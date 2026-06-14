@@ -5,26 +5,26 @@
 // source: bookstore/v1/bookstore.proto
 //
 // database: bookstore_db
-// schema:   bookstore_v1
+// schemas:  bookstore_v1
 //
 // protorm — https://github.com/oh-tarnished/protorm
 
 /// Genre classifies a book's literary category.
 enum Genre {
   /// Default value; the genre has not been specified.
-  UNSPECIFIED @map("unspecified")
+  UNSPECIFIED
 
   /// Fictional works: novels, short stories.
-  FICTION @map("fiction")
+  FICTION
 
   /// Non-fiction works: biographies, essays, reference.
-  NON_FICTION @map("non_fiction")
+  NON_FICTION
 
   /// Science fiction works.
-  SCI_FI @map("sci_fi")
+  SCI_FI
 
   /// Fantasy works.
-  FANTASY @map("fantasy")
+  FANTASY
 
   /// Maps the enum to the "genre" type in the database.
   @@map("genre")

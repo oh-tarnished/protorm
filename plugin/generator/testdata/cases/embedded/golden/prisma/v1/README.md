@@ -33,4 +33,3 @@ erDiagram
 ## Subfolders
 
 - [`embedded/`](./embedded/README.md)
-

@@ -21,4 +21,3 @@ erDiagram
 ## Subfolders
 
 - [`reserved_words/`](./reserved_words/README.md)
-

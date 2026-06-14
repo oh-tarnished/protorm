@@ -12,7 +12,7 @@
 CREATE SCHEMA IF NOT EXISTS "bookstore_v1";
 
 -- Genre classifies a book's literary category.
-CREATE TYPE "bookstore_v1"."genre" AS ENUM ('unspecified', 'fiction', 'non_fiction', 'sci_fi', 'fantasy');
+CREATE TYPE "bookstore_v1"."genre" AS ENUM ('UNSPECIFIED', 'FICTION', 'NON_FICTION', 'SCI_FI', 'FANTASY');
 
 -- Author is a top-level resource. Inferred table: bookstore_v1.authors. id: ID_STRATEGY_ULID synthesizes a generated `id` PK and demotes the AIP resource name to a UNIQUE lookup column; timestamps adds created_at/updated_at.
 CREATE TABLE "bookstore_v1"."authors" (

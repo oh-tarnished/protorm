@@ -21,4 +21,3 @@ erDiagram
 ## Subfolders
 
 - [`mongo/`](./mongo/README.md)
-

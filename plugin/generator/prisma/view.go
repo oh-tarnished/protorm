@@ -4,6 +4,7 @@ package prisma
 // decision happens here so the template stays purely presentational.
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 
@@ -44,11 +45,34 @@ func fragmentView(db *schema.Database, g fragmentGroup, provider types.Provider)
 			ProtocVersion: db.ProtocVersion,
 			Source:        srcProto,
 			Database:      db.Name,
+			SchemaLabel:   "schemas",
+			Schema:        strings.Join(fragmentSchemas(g), ", "),
 		}),
 		"MultiSchema": provider == types.Postgres,
 		"Enums":       enums,
 		"Models":      models,
 	}
+}
+
+// fragmentSchemas lists the distinct postgres schemas a fragment's models and
+// enums belong to, in deterministic order, for the generated-file banner.
+func fragmentSchemas(g fragmentGroup) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(s string) {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, t := range g.tables {
+		add(t.PgSchema)
+	}
+	for _, e := range g.enums {
+		add(e.PgSchema)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // modelViewOf renders one table into template-ready field and index lines.

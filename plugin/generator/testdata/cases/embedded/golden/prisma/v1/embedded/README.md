@@ -63,4 +63,3 @@ Attendee carries an IDENTIFIER, so that field is its primary key.
 | `name` | `VARCHAR(255)` | not null |
 | `email` | `VARCHAR(255)` | not null |
 | `event_id` | `VARCHAR(255)` | not null |
-

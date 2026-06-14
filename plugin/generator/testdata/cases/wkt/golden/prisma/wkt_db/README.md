@@ -21,4 +21,3 @@ erDiagram
 ## Subfolders
 
 - [`wkt/`](./wkt/README.md)
-

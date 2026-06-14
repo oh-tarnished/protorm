@@ -5,7 +5,7 @@
 // source: inventory.proto
 //
 // database: bookstore_db
-// schema:   
+// schemas:  inventory
 //
 // protorm — https://github.com/oh-tarnished/protorm
 

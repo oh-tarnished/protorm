@@ -31,4 +31,3 @@ Event is a document in the events collection.
 | `payload` | `JSONB` | nullable |
 | `occurrence_time` | `TIMESTAMPTZ` | nullable |
 | `score` | `DOUBLE PRECISION` | nullable |
-

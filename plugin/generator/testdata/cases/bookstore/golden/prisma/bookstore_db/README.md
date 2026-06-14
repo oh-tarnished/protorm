@@ -30,4 +30,3 @@ erDiagram
 
 - [`bookstore/`](./bookstore/README.md)
 - [`inventory/`](./inventory/README.md)
-

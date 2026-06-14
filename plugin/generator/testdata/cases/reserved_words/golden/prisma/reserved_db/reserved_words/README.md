@@ -34,4 +34,3 @@ Account is forced onto the reserved table name "user" via a table override, with
 ### Enums
 
 - `State`: UNSPECIFIED, ACTIVE, CLOSED
-

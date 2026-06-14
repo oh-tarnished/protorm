@@ -5,7 +5,7 @@
 // source: reserved_words.proto
 //
 // database: reserved_db
-// schema:   
+// schemas:  public
 //
 // protorm — https://github.com/oh-tarnished/protorm
 

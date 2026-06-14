@@ -5,7 +5,7 @@
 // source: embedded.proto
 //
 // database: v1
-// schema:   
+// schemas:  embedded_v1
 //
 // protorm — https://github.com/oh-tarnished/protorm
 

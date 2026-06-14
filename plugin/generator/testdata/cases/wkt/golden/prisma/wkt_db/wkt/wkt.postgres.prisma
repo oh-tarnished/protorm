@@ -5,7 +5,7 @@
 // source: wkt.proto
 //
 // database: wkt_db
-// schema:   
+// schemas:  kitchen
 //
 // protorm — https://github.com/oh-tarnished/protorm
 

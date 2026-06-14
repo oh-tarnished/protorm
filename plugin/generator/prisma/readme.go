@@ -11,7 +11,6 @@ package prisma
 
 import (
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 
@@ -51,6 +50,9 @@ func writeReadmes(p *protogen.Plugin, db *schema.Database, groups []fragmentGrou
 
 	for dir, n := range dirs {
 		md := readmeMarker + renderReadme(db, dir, n.tables, n.enums, n.fragments, childDirs(dir, dirs), provider)
+		// Collapse the trailing whitespace each section leaves behind into a
+		// single final newline.
+		md = strings.TrimRight(md, "\n") + "\n"
 		f := p.NewGeneratedFile(dir+"/README.md", "")
 		if _, err := f.Write([]byte(md)); err != nil {
 			return fmt.Errorf("prisma: %s/README.md: %w", dir, err)
@@ -105,12 +107,6 @@ type node struct {
 // renderReadme builds the markdown body for one folder.
 func renderReadme(db *schema.Database, dir string, tables []*schema.Table, enums []*schema.Enum, fragments []fragmentGroup, children []string, provider types.Provider) string {
 	var b strings.Builder
-	rel := strings.TrimPrefix(dir, db.Name)
-	rel = strings.TrimPrefix(rel, "/")
-	if rel == "" {
-		rel = "(root)"
-	}
-	log.Printf("rel: %s", rel)
 	fmt.Fprintf(&b, "# `%s/` — Prisma schema\n\n", dir)
 	fmt.Fprintf(&b, "Generated from Protobuf by protoc-gen-protorm. Source of truth is the `.proto` files — regenerate rather than editing.\n\n")
 	fmt.Fprintf(&b, "| Models | Enums |\n| ---: | ---: |\n| %d | %d |\n\n", len(uniqueTables(tables)), len(uniqueEnums(enums)))
